@@ -32,4 +32,4 @@
    (:module :runtime
             :components ((:file "ps-runtime-lib"))
             :depends-on (:src)))
-  :depends-on (:cl-ppcre :anaphora :named-readtables))
+  :depends-on (:cl-ppcre :anaphora :named-readtables :cl-interpol))

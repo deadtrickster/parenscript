@@ -93,19 +93,58 @@
 ;;; Getters
 
 (defpsmacro with-slots (slots object &rest body)
-  (flet ((slot-var (slot)
-           (if (listp slot)
-               (first slot)
-               slot))
-         (slot-symbol (slot)
-           (if (listp slot)
-               (second slot)
-               slot)))
-    `(symbol-macrolet ,(mapcar (lambda (slot)
-                                 `(,(slot-var slot) (getprop ,object ',(slot-symbol slot))))
-                               slots)
-       ,@body)))
+  (let ((object-cache-slot (gensym "wsc")))
+    (flet ((slot-var (slot)
+             (if (listp slot)
+                 (first slot)
+                 slot))
+           (slot-symbol (slot)
+             (if (listp slot)
+                 (second slot)
+                 slot)))
+      `(progn
+         (setq ,object-cache-slot ,object)
+         (symbol-macrolet ,(mapcar (lambda (slot)
+                                     `(,(slot-var slot) (getprop ,object-cache-slot ',(slot-symbol slot))))
+                             slots)
+           ,@body)))))
 
+(defpsmacro within ((this &key with) &rest body)
+  (if with
+      (flet ((slot-var (slot)
+               (if (listp slot)
+                   (first slot)
+                   slot))
+             (slot-symbol (slot)
+             (if (listp slot)
+                 (second slot)
+                 slot)))
+        `(chain (lambda ()
+                  (symbol-macrolet ,(mapcar (lambda (slot)
+                                              `(,(slot-var slot) (getprop this ',(slot-symbol slot))))
+                                      with)
+                    ,@body)) (call ,this)))
+      `(chain (lambda ()
+                ,@body) (call ,this))))
+
+(defpsmacro this (&rest body)
+  `(chain this ,@body))
+
+(defpsmacro exist (symbol)
+  `(and (not (undefined ,symbol)) (not (null ,symbol))))
+
+(defpsmacro fix-scope (this &rest lambda)
+  (let ((fixed-scope-var (gensym "fixed_this")))
+  `((lambda (,fixed-scope-var) 
+      (lambda () (chain ,@lambda (apply ,fixed-scope-var arguments)))
+      ) ,this)))
+
+(defpsmacro with-fixed-scope (this &rest functions)
+  (let ((collected-lambdas
+          (loop for function in functions
+                   collect `(defun ,(second function) ()
+                                (chain (lambda ,(third function) ,@(cdddr function)) (apply ,this arguments))))))
+    `(progn ,@collected-lambdas)))
 ;;; multiple values
 
 (defpsmacro multiple-value-bind (vars form &body body)
@@ -227,12 +266,34 @@ lambda-list::=
 ;;; setf
 
 (defpsmacro setf (&rest args)
+  ;(print *vars-needing-to-be-declared*)
   (assert (evenp (length args)) ()
           "~s does not have an even number of arguments." `(setf ,args))
   `(progn ,@(loop for (place value) on args by #'cddr collect
-                 (aif (and (listp place) (gethash (car place) *setf-expanders*))
-                      (funcall it (cdr place) value)
-                      `(ps-assign ,place ,value)))))
+                  (aif (and (listp place) (gethash (car place) *setf-expanders*))
+                       (funcall it (cdr place) value)
+                       (aif (or
+                              (position #\. (symbol-name place))
+                              (and
+                                (boundp '*enclosing-lexicals*)
+                                (member place *enclosing-lexicals*))
+                              (and 
+                                (boundp '*used-up-names*)
+                                (member place *used-up-names*))
+                              (and
+                                (boundp '*enclosing-function-arguments*)
+                                (member place *enclosing-function-arguments*))
+                              (and
+                                (boundp '*vars-needing-to-be-declared*)
+                                (member place *vars-needing-to-be-declared*)))
+                            `(ps-assign ,place ,value)
+                            (progn
+                              (unless (boundp '*used-up-names*)
+                                (setq *used-up-names* '()))
+                              (push place *used-up-names*)
+                              (push place *enclosing-lexicals*)
+                              (push place *vars-needing-to-be-declared*)
+                              `(ps-assign ,place ,value)))))))
 
 (defpsmacro psetf (&rest args)
   (let ((places (loop for x in args by #'cddr collect x))

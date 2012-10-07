@@ -1,7 +1,7 @@
 (in-package #:parenscript)
 (in-readtable :parenscript)
 
-(defvar *version* 2.3 "Parenscript compiler version.")
+(defvar *version* 2.4 "Parenscript compiler version.")
 
 (defparameter %compiling-reserved-forms-p% t
   "Used to issue warnings when replacing PS special operators or macros.")
@@ -278,13 +278,22 @@ CL environment)."
           (defpsmacro ,name ,args ,@body)))
 
 (defun ps-macroexpand-1 (form)
+  ;(print form)
   (aif (or (and (symbolp form)
                 (or (and (member form *enclosing-lexicals*)
                          (lookup-macro-def form *symbol-macro-env*))
                     (gethash form *symbol-macro-toplevel*))) ;; hack
            (and (consp form) (lookup-macro-def (car form) *macro-env*)))
-       (values (ps-macroexpand (funcall it form)) t)
-       form))
+    (values (ps-macroexpand (funcall it form)) t)
+    (aif (and   ;; here i'm trying to unify (with-slots behavior for (setf slot val) and (slot val) call!!!
+           (consp form)
+           (member (car form) *enclosing-lexicals*)
+           (lookup-macro-def (car form) *symbol-macro-env*))
+      (progn
+        (setq it (macroexpand (append (list (funcall it form)) (rest form))))
+        ;(print it)
+        (values it t))
+      form)))
 
 (defun ps-macroexpand (form)
   (multiple-value-bind (form1 expanded?) (ps-macroexpand-1 form)
@@ -324,6 +333,8 @@ form, FORM, returns the new value for *compilation-level*."
            (apply (or statement-impl expression-impl) (cdr form)))
           (expression-impl
            (apply expression-impl (cdr form)))
+          (statement-impl
+           (apply statement-impl (cdr form)))
           ((member op *lambda-wrappable-statements*)
            (compile-expression `((lambda () ,form))))
           (t (error 'compile-expression-error :form form)))))
@@ -341,7 +352,9 @@ form, FORM, returns the new value for *compilation-level*."
                (let ((*compilation-level*
                       (adjust-compilation-level form *compilation-level*)))
                  (if (special-form? form)
-                     (compile-special-form form)
+                     (progn
+                       ;(print (compile-special-form form))
+                       (compile-special-form form))
                      `(ps-js:funcall
                        ,(if (symbolp (car form))
                             (maybe-rename-local-function (car form))

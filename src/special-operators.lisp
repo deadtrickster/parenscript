@@ -359,6 +359,8 @@ Parenscript now implements implicit return, update your code! Things like (lambd
           (setf (gethash name local-macro-dict) (lambda (x) (declare (ignore x)) expansion))
           (push name local-var-bindings)))
       (let ((*enclosing-lexicals* (append local-var-bindings *enclosing-lexicals*)))
+        ;(print body)
+        ;(print local-macro-dict)
         (ps-compile `(progn ,@body))))))
 
 (define-expression-operator defmacro (name args &body body)

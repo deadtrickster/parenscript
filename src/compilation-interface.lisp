@@ -74,6 +74,16 @@ the read function) Parenscript forms from stream and compiles them as
 if by ps*. If *parenscript-stream* is bound, writes the output to
 *parenscript-stream*, otherwise and returns a string."
   (let ((output-stream (or *parenscript-stream* (make-string-output-stream))))
+    (if (boundp '*ps-source-file*)
+        (format output-stream "// Parenscript: ~a
+
+" *ps-source-file*))
+    (format output-stream "
+if (!window.G)
+  window.G = {};
+
+(function (G) {
+")
     (let ((*compilation-level* :toplevel)
           (*readtable* *readtable*)
           (*package* *package*)
@@ -84,7 +94,11 @@ if by ps*. If *parenscript-stream* is bound, writes the output to
          for form = (funcall *ps-read-function* stream nil eof)
          for *ps-source-current-form* = form
          until (eq form eof)
-         do (ps* form) (fresh-line *parenscript-stream*)))
+         do (ps* form) (format output-stream "
+
+")))
+    (format output-stream  "
+})(window.G);")
     (unless *parenscript-stream*
       (get-output-stream-string output-stream))))
 

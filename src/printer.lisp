@@ -1,6 +1,7 @@
 (in-package #:parenscript)
 (in-readtable :parenscript)
 
+(cl-interpol:enable-interpol-syntax)
 (defvar *ps-print-pretty* t)
 (defvar *indent-num-spaces* 4)
 (defvar *js-string-delimiter* #\'
@@ -98,9 +99,9 @@ vice-versa.")
   (psw "false"))
 
 (defmethod ps-print ((s symbol))
-  (if (keywordp s)
-      (ps-print (string-downcase s))
-      (psw (symbol-to-js-string s))))
+  ;(if (keywordp s)
+  ;    (ps-print (string-downcase s))
+      (psw (symbol-to-js-string s)));)
 
 (defmethod ps-print ((compiled-form cons))
   (ps-print% (car compiled-form) (cdr compiled-form)))
@@ -252,7 +253,7 @@ vice-versa.")
 (defprinter (ps-js:+ ps-js:- ps-js:* ps-js:/ ps-js:% ps-js:&& ps-js:\|\| ps-js:& ps-js:\| ps-js:-= ps-js:+= ps-js:*= ps-js:/= ps-js:%= ps-js:^ ps-js:<< ps-js:>> ps-js:&= ps-js:^= ps-js:\|= ps-js:= ps-js:in ps-js:> ps-js:>= ps-js:< ps-js:<=)
     (&rest args)
   (loop for (arg . remaining) on args do
-       (maybe-break-line (print-op-argument op arg))
+       (print-op-argument op arg)
        (when remaining (format *psw-stream* " ~(~A~) " op))))
 
 (defprinter (ps-js:== ps-js:!= ps-js:=== ps-js:!==) (x y)
@@ -271,8 +272,26 @@ vice-versa.")
 
 (defun print-comma-delimited-list (ps-forms)
   (loop for (form . remaining) on ps-forms do
-        (maybe-break-line (print-op-argument 'ps-js:|,| form))
+        (print-op-argument 'ps-js:|,| form)
         (when remaining (psw ", "))))
+
+(defun print-forced-this-list (ps-forms)
+  (loop for (form . remaining) on ps-forms do
+        (aif (or
+               (and (numberp form) form)
+               (and (stringp form) form)
+               (and (symbolp form) form)
+               (and (consp form) (eq (car form) 'ps-js:array) form))
+            (progn
+              (unless (consp form)
+                (psw #\[))
+              (ps-print it)
+              (unless (consp form)
+                (psw #\])))
+            (progn
+              (psw ".")
+              (print-op-argument 'ps-js:|,| form)
+              ))))
 
 (defprinter ps-js:array (&rest initial-contents)
   "["(print-comma-delimited-list initial-contents)"]")
@@ -280,13 +299,51 @@ vice-versa.")
 (defprinter (ps-js:|,|) (&rest expressions)
   (with-breakable-line (print-comma-delimited-list expressions)))
 
+(defvar *this-call*)
+
 (defprinter ps-js:funcall (fun-designator &rest args)
-  (print-op-argument op fun-designator)"("(print-comma-delimited-list args)")")
+  ;(print fun-designator)
+  ;(print args)
+  #|
+  (within  ((add doLayout getLayout) G.snapin_container)
+    (unless panel.rendered
+      (add panel)
+      (doLayout))
+    ((getLayout) (setActiveItem panel)))
+
+  (function () {
+        if (!panel.rendered) {
+            this.add(panel);
+
+            this.doLayout();
+        };
+
+        return this.getLayout().setActiveItem(panel);
+    }).call(G.snapin_container);
+  |#
+  (let* ((func-name (and (consp fun-designator)
+                          (and (consp (second fun-designator))
+                            (symbolp (second (second fun-designator)))
+                            (second (second fun-designator)))))
+         (*this-call* (eq 'this  func-name)))
+    ;(print func-name)
+    (print-op-argument op fun-designator)
+    (unless *this-call*
+      (psw "("))
+    (if *this-call*
+        (print-forced-this-list args)
+        (print-comma-delimited-list args))
+    (unless *this-call*
+      (psw ")"))))
 
 (defprinter ps-js:block (&rest statements)
   "{" (incf *indent-level*)
-  (dolist (statement statements)
-    (newline-and-indent) (ps-print statement) (psw #\;))
+  (let ((counter (length statements)))
+    (dolist (statement statements)
+      (newline-and-indent) (ps-print statement) (psw #\;)
+      (unless (eq counter 1)
+        (psw #\Newline)
+        (decf counter))))
   (decf *indent-level*) (newline-and-indent)
   "}")
 
@@ -308,16 +365,25 @@ vice-versa.")
 (defprinter ps-js:object (&rest slot-defs)
   (parenthesize-at-toplevel
    (lambda ()
-     (psw "{ ")
-     (with-breakable-line
-         (loop for ((slot-name . slot-value) . remaining) on slot-defs do
-              (maybe-break-line
-               (ps-print slot-name) (psw " : ")
-               (if (and (consp slot-value) (eq 'ps-js:|,| (car slot-value)))
-                   (parenthesize-print slot-value)
-                   (ps-print slot-value)))
-              (when remaining (psw ", "))))
-     (psw " }"))))
+     (psw "{")
+     ;(when (> (length slot-defs) 1)
+     (incf *indent-level*)
+     ;(let ((*indent-level* (+ 1 *indent-level*)))
+       (newline-and-indent);)
+       ;(with-breakable-line
+           (loop for ((slot-name . slot-value) . remaining) on slot-defs do
+              ;(maybe-break-line
+                    (ps-print slot-name) (psw ": ")
+                    (if (and (consp slot-value) (eq 'ps-js:|,| (car slot-value)))
+                        (parenthesize-print slot-value)
+                        (ps-print slot-value));)
+                    (when remaining
+                      (psw ",")                
+                      (newline-and-indent))););)
+     ;(when (> (length slot-defs) 1)
+       (decf *indent-level*)       
+       (newline-and-indent);)
+     (psw "}"))))
 
 (defprinter ps-js:getprop (obj slot)
   (print-op-argument op obj)"."(psw (symbol-to-js-string slot)))
