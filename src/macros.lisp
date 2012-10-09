@@ -266,34 +266,35 @@ lambda-list::=
 ;;; setf
 
 (defpsmacro setf (&rest args)
-  ;(print *vars-needing-to-be-declared*)
   (assert (evenp (length args)) ()
           "~s does not have an even number of arguments." `(setf ,args))
   `(progn ,@(loop for (place value) on args by #'cddr collect
                   (aif (and (listp place) (gethash (car place) *setf-expanders*))
                        (funcall it (cdr place) value)
-                       (aif (or
-                              (position #\. (symbol-name place))
-                              (and
-                                (boundp '*enclosing-lexicals*)
-                                (member place *enclosing-lexicals*))
-                              (and 
-                                (boundp '*used-up-names*)
-                                (member place *used-up-names*))
-                              (and
-                                (boundp '*enclosing-function-arguments*)
-                                (member place *enclosing-function-arguments*))
-                              (and
-                                (boundp '*vars-needing-to-be-declared*)
-                                (member place *vars-needing-to-be-declared*)))
-                            `(ps-assign ,place ,value)
-                            (progn
-                              (unless (boundp '*used-up-names*)
-                                (setq *used-up-names* '()))
-                              (push place *used-up-names*)
-                              (push place *enclosing-lexicals*)
-                              (push place *vars-needing-to-be-declared*)
-                              `(ps-assign ,place ,value)))))))
+                       (if (consp place)
+                           `(ps-assign ,place ,value) ;; fallback 
+                           (aif (or
+                                  (position #\. (symbol-name place))
+                                  (and
+                                    (boundp '*enclosing-lexicals*)
+                                    (member place *enclosing-lexicals*))
+                                  (and 
+                                    (boundp '*used-up-names*)
+                                    (member place *used-up-names*))
+                                  (and
+                                    (boundp '*enclosing-function-arguments*)
+                                    (member place *enclosing-function-arguments*))
+                                  (and
+                                    (boundp '*vars-needing-to-be-declared*)
+                                    (member place *vars-needing-to-be-declared*)))
+                                `(ps-assign ,place ,value)
+                                (progn
+                                  (unless (boundp '*used-up-names*)
+                                    (setq *used-up-names* '()))
+                                  (push place *used-up-names*)
+                                  (push place *enclosing-lexicals*)
+                                  (push place *vars-needing-to-be-declared*)
+                                  `(ps-assign ,place ,value))))))))
 
 (defpsmacro psetf (&rest args)
   (let ((places (loop for x in args by #'cddr collect x))
