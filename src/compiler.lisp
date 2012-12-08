@@ -40,14 +40,19 @@
 
 ;; need to split special op definition into two parts - statement and expression
 (defmacro %define-special-operator (type name lambda-list &body body)
-  (defined-operator-override-check name
-      `(progn
-         (setf (gethash ',name *special-operator-lambda-list*) ',lambda-list)
-         (setf (gethash ',name ,type)
-              (lambda (&rest whole)
-                (destructuring-bind ,lambda-list whole
-                  ,@body))))))
-
+  (let ((downcased-name (intern (string-downcase (symbol-name name))
+                               (find-package :parenscript))))
+    (defined-operator-override-check name
+        `(let ((body-lambda (lambda (&rest whole)
+                    (destructuring-bind ,lambda-list whole
+                      ,@body))))
+           (setf (gethash ',name *special-operator-lambda-list*) ',lambda-list)
+           (setf (gethash ',name ,type)
+                   body-lambda)
+           (setf (gethash ',downcased-name *special-operator-lambda-list*) ',lambda-list)
+           (setf (gethash ',downcased-name ,type)
+                 body-lambda)))))
+  
 (defmacro define-expression-operator (name lambda-list &body body)
   `(%define-special-operator *special-expression-operators*
        ,name ,lambda-list ,@body))
@@ -242,18 +247,28 @@ lambda list from a Parenscript perspective."
 
 
 (defmacro defpsmacro (name args &body body)
-  (defined-operator-override-check name
-      (multiple-value-bind (macro-fn-form effective-lambda-list)
-          (make-ps-macro-function args body)
-        `(progn
-           (setf (gethash ',name *macro-toplevel*) ,macro-fn-form)
-           (setf (gethash ',name *macro-toplevel-lambda-list*) ',effective-lambda-list)
-           (setf (gethash ',name *function-location-toplevel-cache*)
-                 (list (make-source-location ',(or *ps-source-definer-name*
-                                                   'defpsmacro)
-                                             ',name ',args ',body
-                                             #+sbcl (sb-c:source-location))))
-           ',name))))
+  (let ((downcased-name (intern (string-downcase (symbol-name name))
+                               (find-package :parenscript))))
+    (defined-operator-override-check name
+        (multiple-value-bind (macro-fn-form effective-lambda-list)
+            (make-ps-macro-function args body)
+          `(progn
+             (setf (gethash ',name *macro-toplevel*) ,macro-fn-form)
+             (setf (gethash ',name *macro-toplevel-lambda-list*) ',effective-lambda-list)
+             (setf (gethash ',name *function-location-toplevel-cache*)
+                   (list (make-source-location ',(or *ps-source-definer-name*
+                                                     'defpsmacro)
+                                               ',name ',args ',body
+                                               #+sbcl (sb-c:source-location))))
+
+             (setf (gethash ',downcased-name *macro-toplevel*) ,macro-fn-form)
+             (setf (gethash ',downcased-name *macro-toplevel-lambda-list*) ',effective-lambda-list)
+             (setf (gethash ',downcased-name *function-location-toplevel-cache*)
+                   (list (make-source-location ',(or *ps-source-definer-name*
+                                                     'defpsmacro)
+                                               ',downcased-name ',args ',body
+                                               #+sbcl (sb-c:source-location))))
+             ',name)))))
 
 (defmacro define-ps-symbol-macro (symbol expansion)
   (defined-operator-override-check symbol

@@ -325,7 +325,7 @@ vice-versa.")
                           (and (consp (second fun-designator))
                             (symbolp (second (second fun-designator)))
                             (second (second fun-designator)))))
-         (*this-call* (eq 'this  func-name)))
+         (*this-call* (eq '|this|  func-name)))
     ;(print func-name)
     (print-op-argument op fun-designator)
     (unless *this-call*

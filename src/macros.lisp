@@ -88,7 +88,7 @@
   `(new (*array ,@initial-values)))
 
 (defpsmacro length (a)
-  `(getprop ,a 'length))
+  `(getprop ,a '|length|))
 
 ;;; Getters
 
@@ -109,8 +109,8 @@
                              slots)
            ,@body)))))
 
-(defpsmacro within ((this &key with) &rest body)
-  (if with
+(defpsmacro within ((|this| &key |with|) &rest body)
+  (if |with|
       (flet ((slot-var (slot)
                (if (listp slot)
                    (first slot)
@@ -121,11 +121,11 @@
                  slot)))
         `(chain (lambda ()
                   (symbol-macrolet ,(mapcar (lambda (slot)
-                                              `(,(slot-var slot) (getprop this ',(slot-symbol slot))))
-                                      with)
-                    ,@body)) (call ,this)))
+                                              `(,(slot-var slot) (getprop |this| ',(slot-symbol slot))))
+                                      |with|)
+                    ,@body)) (|call| ,|this|)))
       `(chain (lambda ()
-                ,@body) (call ,this))))
+                ,@body) (|call| ,|this|))))
 
 (defpsmacro this (&rest body)
   `(chain this ,@body))
@@ -143,7 +143,7 @@
   (let ((collected-lambdas
           (loop for function in functions
                    collect `(defun ,(second function) ()
-                                (chain (lambda ,(third function) ,@(cdddr function)) (apply ,this arguments))))))
+                                (chain (lambda ,(third function) ,@(cdddr function)) (|apply| ,this |arguments|))))))
     `(progn ,@collected-lambdas)))
 ;;; multiple values
 

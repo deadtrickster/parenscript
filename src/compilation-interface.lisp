@@ -85,7 +85,6 @@ if (!window.G)
 (function (G) {
 ")
     (let ((*compilation-level* :toplevel)
-          (*readtable* *readtable*)
           (*package* *package*)
           (*parenscript-stream* output-stream)
           (eof '#:eof)

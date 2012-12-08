@@ -12,7 +12,7 @@
       :sum :collect :append :count :minimize :maximize :into))
 
   (defun as-keyword (key)
-    (intern (symbol-name key) :keyword)))
+    (intern (string-upcase (symbol-name key)) :keyword)))
 
 (defmacro loop-case (key &body forms)
   (loop :for (match . nil) :in forms
